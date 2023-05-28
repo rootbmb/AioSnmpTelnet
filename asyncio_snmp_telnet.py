@@ -5,14 +5,14 @@ import ipaddress
 
 
 class TelnetSNMP():
-    # Инициализация параметров для соединения 12
+    # Инициализация параметров для соединения 
     def __init__(self, ip, username="admin", password="admin", commands=""):
         self.username = username
         self.password = password
         self.ip = str(ip)
         self.commands = commands
 
-    # Получение назавние коммутатора по snmp
+    # Получение назавние вендора/модель коммутатора по snmp
     async def snmp_vendor_id(self) -> tuple:
         try:
             # Получение данных по snmp
@@ -21,7 +21,7 @@ class TelnetSNMP():
                 result = ''
                 for res in results:
                     result = res.value.decode("utf-8")
-                # Распарсин по вендорам и повзврат значения и ip устройсва
+                # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith("DES-3526") or result.strip().startswith('D-Link') or result.startswith(
                         'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith(
                         'DES-1100-16'):
@@ -63,14 +63,15 @@ class TelnetSNMP():
                     vendor_id = result.split(' ')[0]
                     return vendor_id, self.ip
         except:
-            vendor_id = f"Connect timeout to ip address {self.ip} "
+            vendor_id = f"Snmpwalk connect timeout to ip address: {self.ip}... "
             return vendor_id, self.ip
 
     # Передаче комманд на выполнение в свитч
     async def shell(self, reader, writer) -> None:
-        print(self.commands)
         try:
-            print(await reader.read(1024))
+            outp = await reader.read(1024)
+            if out != None:
+                print(f'Connection is established to the ip address: {self.ip}...')
             writer.write(self.username + '\n')
             await asyncio.sleep(0.5)
             writer.write(self.password + '\n')
@@ -81,11 +82,11 @@ class TelnetSNMP():
             await asyncio.sleep(0.5)
             print(await reader.read(1024))
         except ConnectionResetError:
-            print(f"Connection reset by peer {self.ip}")
+            print(f"Connection reset by peer: {self.ip}...")
 
     # Настройки и подвключение по telnet
     async def cli_connect(self) -> None:
-        print(self.ip, "---")
+        print(f'Connections to ip address: {self.ip}...' )
         reader, writer = await telnetlib3.open_connection(self.ip, 23, connect_minwait=1.5, connect_maxwait=2,
                                                           shell=self.shell)
         await writer.protocol.waiter_closed
