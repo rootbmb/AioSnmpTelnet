@@ -4,7 +4,7 @@ import telnetlib3
 import ipaddress
 
 
-class TelnetSNMP():
+class TelnetSNMP:
     # Инициализация параметров для соединения 
     def __init__(self, ip, username="admin", password="admin", commands=""):
         self.username = username
@@ -14,6 +14,7 @@ class TelnetSNMP():
 
     # Получение назавние вендора/модель коммутатора по snmp
     async def snmp_vendor_id(self) -> tuple:
+        vendor_id = None
         try:
             # Получение данных по snmp
             async with aiosnmp.Snmp(host=self.ip, port=161, community="public", timeout=1) as snmp:
@@ -24,7 +25,7 @@ class TelnetSNMP():
                 # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith("DES-3526") or result.strip().startswith('D-Link') or result.startswith(
                         'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith(
-                        'DES-1100-16'):
+                    'DES-1100-16'):
                     if result.startswith('D-Link'):
                         vendor_id = result.split(' ')[1]
                         return vendor_id, self.ip
@@ -70,7 +71,7 @@ class TelnetSNMP():
     async def shell(self, reader, writer) -> None:
         try:
             outp = await reader.read(1024)
-            if out != None:
+            if outp != None:
                 print(f'Connection is established to the ip address: {self.ip}...')
             writer.write(self.username + '\n')
             await asyncio.sleep(0.5)
@@ -78,7 +79,7 @@ class TelnetSNMP():
             await asyncio.sleep(0.5)
             for command in self.commands:
                 writer.write(command)
-                asyncio.sleep(1)
+                await asyncio.sleep(1)
             await asyncio.sleep(0.5)
             print(await reader.read(1024))
         except ConnectionResetError:
@@ -86,11 +87,10 @@ class TelnetSNMP():
 
     # Настройки и подвключение по telnet
     async def cli_connect(self) -> None:
-        print(f'Connections to ip address: {self.ip}...' )
+        print(f'Connections to ip address: {self.ip}...')
         reader, writer = await telnetlib3.open_connection(self.ip, 23, connect_minwait=1.5, connect_maxwait=2,
                                                           shell=self.shell)
         await writer.protocol.waiter_closed
-
 
 async def main(username, password, subnet) -> None:
     tasks = []
@@ -127,7 +127,6 @@ async def main(username, password, subnet) -> None:
         vendor_id.append(await task)
 
     for t in vendor_id:
-        print(t)
         try:
             if t[0] in switch_id.get('DLINK') and t != None:
                 ip = t[1]
@@ -135,13 +134,13 @@ async def main(username, password, subnet) -> None:
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
-            if t[0] in switch_id.get('EDGE') and t != None:
+            elif t[0] in switch_id.get('EDGE') and t != None:
                 ip = t[1]
                 command = commands.get('EDGE')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
-            if t[0] in switch_id.get('SNR') and t != None:
+            elif t[0] in switch_id.get('SNR') and t != None:
                 ip = t[1]
                 command = commands.get('SNR')
                 tasks_telnet.append(asyncio.create_task(
@@ -157,4 +156,4 @@ async def main(username, password, subnet) -> None:
 username = input('login: ')
 password = input('password: ')
 subnet = input('Enter to subnet: ')
-asyncio.run(main(username, password,subnet))
+asyncio.run(main(username, password, subnet))
