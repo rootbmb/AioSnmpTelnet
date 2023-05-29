@@ -65,7 +65,8 @@ class TelnetSNMP:
                     return vendor_id, self.ip
         except:
             vendor_id = f"Snmpwalk connect timeout to ip address: {self.ip}... "
-            return vendor_id, self.ip
+            print(vendor_id)
+            return vendor_id
 
     # Передаче комманд на выполнение в свитч
     async def shell(self, reader, writer) -> None:
@@ -91,6 +92,7 @@ class TelnetSNMP:
         reader, writer = await telnetlib3.open_connection(self.ip, 23, connect_minwait=1.5, connect_maxwait=2,
                                                           shell=self.shell)
         await writer.protocol.waiter_closed
+
 
 async def main(username, password, subnet) -> None:
     tasks = []
