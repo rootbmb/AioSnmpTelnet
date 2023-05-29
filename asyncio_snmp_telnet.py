@@ -92,7 +92,7 @@ class TelnetSNMP():
         await writer.protocol.waiter_closed
 
 
-async def main(username, password) -> None:
+async def main(username, password, subnet) -> None:
     tasks = []
     tasks_telnet = []
     vendor_id = []
@@ -118,7 +118,7 @@ async def main(username, password) -> None:
                         'end\n',
                         'write\nY\n']}
 
-    net = [str(ip) for ip in ipaddress.ip_network("10.10.5.0/24")]
+    net = [str(ip) for ip in ipaddress.ip_network(subnet)]
 
     for ip in net:
         tasks.append(asyncio.create_task(TelnetSNMP(ip).snmp_vendor_id()))
@@ -156,4 +156,5 @@ async def main(username, password) -> None:
 
 username = input('login: ')
 password = input('password: ')
-asyncio.run(main(username, password))
+subnet = input('Enter to subnet: ')
+asyncio.run(main(username, password,subnet))
