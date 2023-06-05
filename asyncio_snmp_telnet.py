@@ -3,6 +3,7 @@ import ipaddress
 
 import aiosnmp
 import telnetlib3
+from aiosnmp.exceptions import SnmpTimeoutError
 
 
 class TelnetSNMP:
@@ -14,8 +15,7 @@ class TelnetSNMP:
         self.commands = commands
 
     # Получение назавние вендора/модель коммутатора по snmp
-    async def snmp_vendor_id(self) -> tuple:
-        vendor_id = None
+    async def snmp_vendor_id(self) -> tuple[str, str] | list[str]:
         try:
             # Получение данных по snmp
             async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=1) as snmp:
@@ -25,7 +25,8 @@ class TelnetSNMP:
                     result = res.value.decode("utf-8")
                 # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith('DES-3526') or result.strip().startswith('D-Link') or result.startswith(
-                        'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith('DES-1100-16'):
+                        'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith(
+                    'DES-1100-16'):
                     if result.startswith('D-Link'):
                         vendor_id = result.split(' ')[1]
                         return vendor_id, self.ip
@@ -63,9 +64,9 @@ class TelnetSNMP:
                     # zyxel
                     vendor_id = result.split(' ')[0]
                     return vendor_id, self.ip
-        except:
+        except SnmpTimeoutError:
             print(f'Snmpwalk connect timeout to ip address: {self.ip}... ')
-            return None, None
+            return ['Connect timeout snmp ', self.ip]
 
     # Передаче комманд на выполнение в свитч
     async def shell(self, reader, writer) -> None:
@@ -133,28 +134,26 @@ async def main(uname: str, pwd: str, snet: str) -> None:
         vendor_id.append(await task)
 
     for t in vendor_id:
-        try:
-            if t[0] in switch_id.get('DLINK') and t is not None:
+        if t is not None:
+            if t[0] in switch_id.get('DLINK'):
                 ip = t[1]
                 command = commands.get('DLINK')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
-            elif t[0] in switch_id.get('EDGE') and t is not None:
+            elif t[0] in switch_id.get('EDGE'):
                 ip = t[1]
                 command = commands.get('EDGE')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
-            elif t[0] in switch_id.get('SNR') and t is not None:
+            elif t[0] in switch_id.get('SNR'):
                 ip = t[1]
                 command = commands.get('SNR')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, uname, pwd, command).cli_connect()))
-
-        except:
-            pass
-            # print('Errors connect')
+            else:
+                print(t)
 
     for task in tasks_telnet:
         await task
