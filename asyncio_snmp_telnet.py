@@ -66,7 +66,7 @@ class TelnetSNMP:
         except:
             vendor_id = f"Snmpwalk connect timeout to ip address: {self.ip}... "
             print(vendor_id)
-            return vendor_id
+            return
 
     # Передаче комманд на выполнение в свитч
     async def shell(self, reader, writer) -> None:
@@ -95,6 +95,7 @@ class TelnetSNMP:
 
 
 async def main(username, password, subnet) -> None:
+
     tasks = []
     tasks_telnet = []
     vendor_id = []
@@ -119,11 +120,15 @@ async def main(username, password, subnet) -> None:
                         'ssh-server enable\n',
                         'end\n',
                         'write\nY\n']}
-
-    net = [str(ip) for ip in ipaddress.ip_network(subnet)]
+    try:
+        net = [str(ip) for ip in ipaddress.ip_network(subnet)]
+    except ValueError:
+        print("does not appear to be an IPv4 or IPv6 network")
+        net = ['0.0.0.0']
 
     for ip in net:
-        tasks.append(asyncio.create_task(TelnetSNMP(ip).snmp_vendor_id()))
+        if ip != "0.0.0.0":
+            tasks.append(asyncio.create_task(TelnetSNMP(ip).snmp_vendor_id()))
 
     for task in tasks:
         vendor_id.append(await task)
@@ -149,7 +154,8 @@ async def main(username, password, subnet) -> None:
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
         except:
-            print('Errors connect')
+            pass
+            #print('Errors connect')
 
     for task in tasks_telnet:
         await task
