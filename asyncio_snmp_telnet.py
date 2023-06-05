@@ -1,16 +1,15 @@
 import asyncio
-from typing import Dict, List
+import ipaddress
 
 import aiosnmp
 import telnetlib3
-import ipaddress
 
 
 class TelnetSNMP:
     # Инициализация параметров для соединения 
-    def __init__(self, ip, username: str = 'admin', password: str = 'admin', commands: list = ""):
-        self.username = username
-        self.password = password
+    def __init__(self, ip, login: str = 'admin', in_password: str = 'admin', commands: list = ""):
+        self.username = login
+        self.password = in_password
         self.ip = str(ip)
         self.commands = commands
 
@@ -26,13 +25,12 @@ class TelnetSNMP:
                     result = res.value.decode("utf-8")
                 # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith('DES-3526') or result.strip().startswith('D-Link') or result.startswith(
-                        'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith(
-                    'DES-1100-16'):
+                        'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith('DES-1100-16'):
                     if result.startswith('D-Link'):
                         vendor_id = result.split(' ')[1]
                         return vendor_id, self.ip
                     elif result.startswith('DXS'):
-                        vendor_id_id = result.split(' ')[0]
+                        vendor_id = result.split(' ')[0]
                         return vendor_id, self.ip
                     elif result.startswith('DGS'):
                         vendor_id = result.split(' ')[0]
@@ -66,9 +64,8 @@ class TelnetSNMP:
                     vendor_id = result.split(' ')[0]
                     return vendor_id, self.ip
         except:
-            vendor_id = f'Snmpwalk connect timeout to ip address: {self.ip}... '
-            print(vendor_id)
-            return
+            print(f'Snmpwalk connect timeout to ip address: {self.ip}... ')
+            return None, None
 
     # Передаче комманд на выполнение в свитч
     async def shell(self, reader, writer) -> None:
@@ -96,7 +93,7 @@ class TelnetSNMP:
         await writer.protocol.waiter_closed
 
 
-async def main(username: str, password: str, subnet: str) -> None:
+async def main(uname: str, pwd: str, snet: str) -> None:
     tasks = []
     tasks_telnet = []
     vendor_id = []
@@ -107,7 +104,8 @@ async def main(username: str, password: str, subnet: str) -> None:
                  'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'], }
     commands: dict[str, list[str]] = {'DLINK': ['enable ssh\n',
                                                 'config ssh authmode password enable\n',
-                                                'config ssh server maxsession 3 contimeout 600 authfail 10 rekey never\n',
+                                                'config ssh server maxsession 3 contimeout 600 authfail 10 rekey '
+                                                'never\n',
                                                 'config ssh user admin authmode password\n',
                                                 'config ssh algorithm RSA enable\n',
                                                 'save\n'],
@@ -122,7 +120,7 @@ async def main(username: str, password: str, subnet: str) -> None:
                                               'end\n',
                                               'write\nY\n']}
     try:
-        net = [str(ip) for ip in ipaddress.ip_network(subnet)]
+        net = [str(ip) for ip in ipaddress.ip_network(snet)]
     except ValueError:
         print('does not appear to be an IPv4 or IPv6 network')
         net = ['0.0.0.0']
@@ -140,19 +138,19 @@ async def main(username: str, password: str, subnet: str) -> None:
                 ip = t[1]
                 command = commands.get('DLINK')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, username, password, command).cli_connect()))
+                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
             elif t[0] in switch_id.get('EDGE') and t is not None:
                 ip = t[1]
                 command = commands.get('EDGE')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, username, password, command).cli_connect()))
+                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
             elif t[0] in switch_id.get('SNR') and t is not None:
                 ip = t[1]
                 command = commands.get('SNR')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, username, password, command).cli_connect()))
+                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
         except:
             pass
