@@ -25,8 +25,9 @@ class TelnetSNMP:
                     result = res.value.decode("utf-8")
                 # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith('DES-3526') or result.strip().startswith('D-Link') or result.startswith(
-                        'DXS') or result.startswith('DGS') or result.startswith('DES-1100-24') or result.startswith(
-                    'DES-1100-16'):
+                        'DXS') or result.startswith('DGS') or result.startswith(
+                        'DES-1100-24') or result.startswith(
+                        'DES-1100-16'):
                     if result.startswith('D-Link'):
                         vendor_id = result.split(' ')[1]
                         return vendor_id, self.ip
