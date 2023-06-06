@@ -153,8 +153,6 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                 command = commands.get('SNR')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, uname, pwd, command).cli_connect()))
-            else:
-                print(t)
 
     for task in tasks_telnet:
         await task
