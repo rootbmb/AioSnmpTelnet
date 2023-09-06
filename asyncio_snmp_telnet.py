@@ -113,7 +113,7 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                                                 'save\n'],
                                       'EDGE': ['config\n',
                                                'ip ssh server-key  size 512\n',
-                                               'exit\n',
+                                               'end\n',
                                                'ip ssh crypto host-key generate\n',
                                                'ip ssh save host-key\n',
                                                'config\n',
