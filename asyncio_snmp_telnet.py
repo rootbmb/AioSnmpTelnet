@@ -70,6 +70,9 @@ class TelnetSNMP:
                     # zyxel
                     vendor_id = result.split(' ')[0]
                     return vendor_id, self.ip
+                elif result.startswith('S2326TP-EI') or result.startswith('S2352P-EI'):
+                    vendor_id = result.split(' ')[0]
+                    return vendor_id, self.ip
         except SnmpTimeoutError:
             print(f'Snmpwalk connect timeout to ip address: {self.ip}... ')
             return ['Connect timeout snmp ', self.ip]
@@ -103,7 +106,6 @@ class TelnetSNMP:
         try:
             delay = await aioping.ping(self.ip) * 100
             print("Ping response in %s ms" % delay)
-
         except TimeoutError:
             print("Timed out")
         
@@ -117,7 +119,8 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                            'DES-3526', 'DES-1100-16', 'DES-1100-24'],
                  'SNR': ['QSW-2800-28T-M-AC', 'SNR-S2940-8G-v2', 'SNR-S2950-24G', 'SNR-S2960-24G', 'SNR-S2960-48G',
                          'QSW-2800-28T-AC', 'QSW-2800-10T-AC', 'SNR-S2985G-48T', 'SNR-S2985G-8T'],
-                 'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'], }
+                 'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'], 
+                 'HUAWEI': ['S2352P-EI', 'S2326TP-EI']}
     commands: dict[str, list[str]] = {'DLINK': ['enable ssh\n',
                                                 'config ssh authmode password enable\n',
                                                 'config ssh server maxsession 3 contimeout 600 authfail 10 rekey '
@@ -137,7 +140,12 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                                       'SNR': ['config\n',
                                               'ssh-server enable\n',
                                               'end\n',
-                                              'write\nY\n']}
+                                              'write\nY\n'],
+                                      'HUAWEI':['system-view\n',
+                                                'stelnet server enable\n',
+                                                'ssh authentication-type default password\n',
+                                                'rsa local-key-pair create\n512\n',
+                                                'q\nsave\ny\n']}
     try:
         net = [str(ip) for ip in ipaddress.ip_network(snet)]
     except ValueError:
@@ -169,6 +177,12 @@ async def main(uname: str, pwd: str, snet: str) -> None:
             elif t[0] in switch_id.get('SNR'):
                 ip = t[1]
                 command = commands.get('SNR')
+                tasks_telnet.append(asyncio.create_task(
+                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
+            
+            elif t[0] in switch_id.get('HUAWEI'):
+                ip = t[1]
+                command = commands.get('HUAWEI')
                 tasks_telnet.append(asyncio.create_task(
                     TelnetSNMP(ip, uname, pwd, command).cli_connect()))
 
