@@ -12,18 +12,18 @@ from aiosnmp.exceptions import SnmpTimeoutError
 
 
 class TelnetSNMP:
-    # Инициализация параметров для соединения 
+    # Инициализация параметров для соединения 1
     def __init__(self, ip, login: str = 'admin', in_password: str = 'admin', commands: list = ""):
         self.username = login
         self.password = in_password
-        self.ip = ip
+        self.ip = str(ip)
         self.commands = commands
 
     # Получение назавние вендора/модель коммутатора по snmp
     async def snmp_vendor_id(self) -> tuple[str, str] | list[str]:
         try:
             # Получение данных по snmp
-            async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=3) as snmp:
+            async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=1) as snmp:
                 results = await snmp.get('.1.3.6.1.2.1.1.1.0')
                 result = ''
                 for res in results:
@@ -188,10 +188,10 @@ async def main(uname: str, pwd: str, snet: str) -> None:
 
     for task in tasks_telnet:
         await task
+
+if __name__ == '__main__':
+    username = input('login: ')
+    password = input('password: ')
+    subnet = input('Enter to subnet: ')
+    asyncio.run(main(username, password, subnet))
     input('...')
-
-
-username = input('login: ')
-password = input('password: ')
-subnet = input('Enter to subnet: ')
-asyncio.run(main(username, password, subnet))
