@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import ipaddress
-
 import aiosnmp
 import telnetlib3
 from aiosnmp.exceptions import SnmpTimeoutError
@@ -159,9 +161,11 @@ async def main(uname: str, pwd: str, snet: str) -> None:
 
     for task in tasks_telnet:
         await task
+    input('...')
 
+if __name__ == '__main__':
+    username = input('login: ')
+    password = input('password: ')
+    subnet = input('Enter to subnet: ')
+    asyncio.run(main(username, password, subnet))
 
-username = input('login: ')
-password = input('password: ')
-subnet = input('Enter to subnet: ')
-asyncio.run(main(username, password, subnet))
