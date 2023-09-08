@@ -4,8 +4,11 @@
 import asyncio
 import ipaddress
 import aiosnmp
+import aioping
 import telnetlib3
+import os
 from aiosnmp.exceptions import SnmpTimeoutError
+
 
 
 class TelnetSNMP:
@@ -96,7 +99,16 @@ class TelnetSNMP:
                                                           shell=self.shell)
         await writer.protocol.waiter_closed
 
+    async def check_ping(self) -> str:
+        try:
+            delay = await aioping.ping(self.ip) * 100
+            print("Ping response in %s ms" % delay)
 
+        except TimeoutError:
+            print("Timed out")
+        
+       
+        
 async def main(uname: str, pwd: str, snet: str) -> None:
     tasks = []
     tasks_telnet = []
@@ -134,6 +146,7 @@ async def main(uname: str, pwd: str, snet: str) -> None:
 
     for ip in net:
         if ip != '0.0.0.0':
+            tasks.append(asyncio.create_task(TelnetSNMP(ip).check_ping()))
             tasks.append(asyncio.create_task(TelnetSNMP(ip).snmp_vendor_id()))
 
     for task in tasks:
