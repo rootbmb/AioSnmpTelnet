@@ -8,17 +8,17 @@ from aiosnmp.exceptions import SnmpTimeoutError
 
 class TelnetSNMP:
     # Инициализация параметров для соединения 
-    def __init__(self, ip, login: str = 'admin', in_password: str = 'admin', commands: list = ""):
+    def __init__(self, ip: str, login: str = 'admin', in_password: str = 'admin', commands: list = ''):
         self.username = login
         self.password = in_password
-        self.ip = str(ip)
+        self.ip = ip
         self.commands = commands
 
     # Получение назавние вендора/модель коммутатора по snmp
     async def snmp_vendor_id(self) -> tuple[str, str] | list[str]:
         try:
             # Получение данных по snmp
-            async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=1) as snmp:
+            async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=3) as snmp:
                 results = await snmp.get('.1.3.6.1.2.1.1.1.0')
                 result = ''
                 for res in results:
