@@ -6,7 +6,7 @@ import ipaddress
 import aiosnmp
 import aioping
 import telnetlib3
-import configparser
+import os
 from aiosnmp.exceptions import SnmpTimeoutError
 
 
