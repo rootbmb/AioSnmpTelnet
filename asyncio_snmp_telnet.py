@@ -6,9 +6,8 @@ import ipaddress
 import aiosnmp
 import aioping
 import telnetlib3
-import os
+import configparser
 from aiosnmp.exceptions import SnmpTimeoutError
-
 
 
 class TelnetSNMP:
@@ -16,7 +15,7 @@ class TelnetSNMP:
     def __init__(self, ip, login: str = 'admin', in_password: str = 'admin', commands: list = ""):
         self.username = login
         self.password = in_password
-        self.ip = str(ip)
+        self.ip = ip
         self.commands = commands
 
     # Получение назавние вендора/модель коммутатора по snmp
@@ -26,7 +25,9 @@ class TelnetSNMP:
             async with aiosnmp.Snmp(host=self.ip, port=161, community='public', timeout=1) as snmp:
                 results = await snmp.get('.1.3.6.1.2.1.1.1.0')
                 result = ''
+                print(self.ip)
                 for res in results:
+                    print(res.value)
                     result = res.value.decode("utf-8")
                 # Распарсин по вендорам и вовзврат значения и ip устройсва
                 if result.startswith('DES-3526') or result.strip().startswith('D-Link') or result.startswith(
@@ -82,7 +83,8 @@ class TelnetSNMP:
         try:
             outp = await reader.read(1024)
             if outp is not None:
-                print(f'Connection is established to the ip address: {self.ip}...')
+                print(
+                    f'Connection is established to the ip address: {self.ip}...')
             writer.write(self.username + '\n')
             await asyncio.sleep(0.5)
             writer.write(self.password + '\n')
@@ -108,10 +110,20 @@ class TelnetSNMP:
             print("Ping response in %s ms" % delay)
         except TimeoutError:
             print("Timed out")
-        
-       
-        
-async def main(uname: str, pwd: str, snet: str) -> None:
+
+
+def config() -> (str, str, str):
+    conf_file = "config.ini"
+    conf = configparser.ConfigParser()
+    conf.read(conf_file)
+    username = conf.get('default', 'username')
+    password = conf.get('default', 'password')
+    subnet = conf.get('default', 'subnet')
+    return username, password, subnet
+
+
+async def main() -> None:
+    username, password, subnet = config()
     tasks = []
     tasks_telnet = []
     vendor_id = []
@@ -119,8 +131,9 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                            'DES-3526', 'DES-1100-16', 'DES-1100-24'],
                  'SNR': ['QSW-2800-28T-M-AC', 'SNR-S2940-8G-v2', 'SNR-S2950-24G', 'SNR-S2960-24G', 'SNR-S2960-48G',
                          'QSW-2800-28T-AC', 'QSW-2800-10T-AC', 'SNR-S2985G-48T', 'SNR-S2985G-8T'],
-                 'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'], 
-                 'HUAWEI': ['S2352P-EI', 'S2326TP-EI']}
+                 'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'],
+                 'HUAWEI': ['S2352P-EI', 'S2326TP-EI'],
+                 'ALCATEL': ['LS6200']}
     commands: dict[str, list[str]] = {'DLINK': ['enable ssh\n',
                                                 'config ssh authmode password enable\n',
                                                 'config ssh server maxsession 3 contimeout 600 authfail 10 rekey '
@@ -140,14 +153,23 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                                       'SNR': ['config\n',
                                               'ssh-server enable\n',
                                               'end\n',
-                                              'write\nY\n'],
-                                      'HUAWEI':['system-view\n',
-                                                'stelnet server enable\n',
-                                                'ssh authentication-type default password\n',
-                                                'rsa local-key-pair create\n512\n',
-                                                'q\nsave\ny\n']}
+                                              'write\n',
+                                              'Y\n'],
+                                      'HUAWEI': ['system-view\n',
+                                                 'stelnet server enable\n',
+                                                 'ssh authentication-type default password\n',
+                                                 'rsa local-key-pair create\n', 'y\n', '512\n',
+                                                 'q\n', 'save\n', 'y\n'],
+                                      'ALCATEL': ['configure\n',
+                                                  'crypto key generate dsa\n',
+                                                  'y\n',
+                                                  '\n',
+                                                  'ip ssh server\n',
+                                                  'end\n',
+                                                  'copy running-config startup-config\n',
+                                                  'y\n']}
     try:
-        net = [str(ip) for ip in ipaddress.ip_network(snet)]
+        net = [str(ip) for ip in ipaddress.ip_network(subnet)]
     except ValueError:
         print('does not appear to be an IPv4 or IPv6 network')
         net = ['0.0.0.0']
@@ -166,32 +188,33 @@ async def main(uname: str, pwd: str, snet: str) -> None:
                 ip = t[1]
                 command = commands.get('DLINK')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
+                    TelnetSNMP(ip, username, password, command).cli_connect()))
 
             elif t[0] in switch_id.get('EDGE'):
                 ip = t[1]
                 command = commands.get('EDGE')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
+                    TelnetSNMP(ip, username, password, command).cli_connect()))
 
             elif t[0] in switch_id.get('SNR'):
                 ip = t[1]
                 command = commands.get('SNR')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
-            
+                    TelnetSNMP(ip, username, password, command).cli_connect()))
+
             elif t[0] in switch_id.get('HUAWEI'):
                 ip = t[1]
                 command = commands.get('HUAWEI')
                 tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, uname, pwd, command).cli_connect()))
-
+                    TelnetSNMP(ip, username, password, command).cli_connect()))
+            elif t[0] in switch_id.get('ALCATEL'):
+                ip = t[1]
+                command = commands.get('ALCATEL')
+                tasks_telnet.append(asyncio.create_task(
+                    TelnetSNMP(ip, username, password, command).cli_connect()))
     for task in tasks_telnet:
         await task
 
 if __name__ == '__main__':
-    username = input('login: ')
-    password = input('password: ')
-    subnet = input('Enter to subnet: ')
-    asyncio.run(main(username, password, subnet))
+    asyncio.run(main())
     input('...')
