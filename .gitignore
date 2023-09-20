@@ -73,3 +73,5 @@ ENV/
 !.vscode/launch.json 
 !.vscode/extensions.json 
 .history
+.idea
+.idea/*

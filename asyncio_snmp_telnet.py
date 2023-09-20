@@ -7,7 +7,12 @@ import aiosnmp
 import aioping
 import telnetlib3
 import configparser
+import time
 from aiosnmp.exceptions import SnmpTimeoutError
+import platform
+import logging
+if platform.system() == 'Windows':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
 class TelnetSNMP:
@@ -85,15 +90,16 @@ class TelnetSNMP:
             if outp is not None:
                 print(
                     f'Connection is established to the ip address: {self.ip}...')
-            writer.write(self.username + '\n')
-            await asyncio.sleep(0.5)
-            writer.write(self.password + '\n')
-            await asyncio.sleep(0.5)
-            for command in self.commands:
-                writer.write(command)
-                await asyncio.sleep(1)
-            await asyncio.sleep(0.5)
-            print(await reader.read(1024))
+
+                writer.write(self.username + '\n')
+                await asyncio.sleep(0.5)
+                writer.write(self.password + '\n')
+                await asyncio.sleep(0.5)
+                for command in self.commands:
+                    writer.write(command)
+                    await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
+                print(await reader.read(1024))
         except ConnectionResetError:
             print(f'Connection reset by peer: {self.ip}...')
 
@@ -104,12 +110,19 @@ class TelnetSNMP:
                                                           shell=self.shell)
         await writer.protocol.waiter_closed
 
-    async def check_ping(self) -> str:
-        try:
-            delay = await aioping.ping(self.ip) * 100
-            print("Ping response in %s ms" % delay)
-        except TimeoutError:
-            print("Timed out")
+    async def wait_host_port(self, duration: int = 10, delay: int = 2) -> str | bool:
+        tmax = time.time() + duration
+        while time.time() < tmax:
+            try:
+                reader, writer = await asyncio.wait_for(asyncio.open_connection(self.ip, 22), timeout=5)
+                writer.close()
+                await writer.wait_closed()
+                await asyncio.sleep(1)
+                return
+            except:
+                if delay:
+                    await asyncio.sleep(delay)
+        return self.ip
 
 
 def config() -> (str, str, str):
@@ -122,18 +135,40 @@ def config() -> (str, str, str):
     return username, password, subnet
 
 
+async def do_ping(host: str) -> str | None:
+    try:
+        delay = await aioping.ping(host, timeout=20) * 100
+        print("Ping response in %s ms to ip " % round(delay, 2), host)
+        await asyncio.sleep(1)
+        return host
+    except TimeoutError:
+        # print("Timed out")
+        return
+
+
+async def pingTask(subnet: ipaddress.ip_network) -> list:
+    tasks = []
+    try:
+        net = [str(ip) for ip in ipaddress.ip_network(subnet)]
+    except ValueError:
+        print('does not appear to be an IPv4 or IPv6 network')
+        net = ['0.0.0.0']
+    await asyncio.sleep(1)
+    for ip in net:
+        tasks.append(asyncio.create_task(do_ping(ip)))
+    result = await asyncio.gather(*tasks)
+    return result
+
+
 async def main() -> None:
     username, password, subnet = config()
-    tasks = []
-    tasks_telnet = []
-    vendor_id = []
-    switch_id = {'DLINK': ['DES-3200-26', 'DES-3026', 'DES-3052', 'DES-1228', 'DXS-3326GSR', 'DES-3028', 'DES-1228/ME',
-                           'DES-3526', 'DES-1100-16', 'DES-1100-24'],
-                 'SNR': ['QSW-2800-28T-M-AC', 'SNR-S2940-8G-v2', 'SNR-S2950-24G', 'SNR-S2960-24G', 'SNR-S2960-48G',
-                         'QSW-2800-28T-AC', 'QSW-2800-10T-AC', 'SNR-S2985G-48T', 'SNR-S2985G-8T'],
-                 'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'],
-                 'HUAWEI': ['S2352P-EI', 'S2326TP-EI'],
-                 'ALCATEL': ['LS6200']}
+    switch_id: dict[str, list[str]] = {'DLINK': ['DES-3200-26', 'DES-3026', 'DES-3052', 'DES-1228', 'DXS-3326GSR', 'DES-3028', 'DES-1228/ME',
+                                                 'DES-3526'],
+                                       'SNR': ['QSW-2800-28T-M-AC', 'SNR-S2940-8G-v2', 'SNR-S2950-24G', 'SNR-S2960-24G', 'SNR-S2960-48G',
+                                               'QSW-2800-28T-AC', 'QSW-2800-10T-AC', 'SNR-S2985G-48T', 'SNR-S2985G-8T', 'SNR-S2965-24T', 'SNR-S2985G-24TC', 'SNR-S2965-8T'],
+                                       'EDGE': ['ES3528M', 'ES3526XA', 'ECS3510-28T', 'ES3528MV2'],
+                                       'HUAWEI': ['S2352P-EI', 'S2326TP-EI'],
+                                       'ALCATEL': ['LS6200']}
     commands: dict[str, list[str]] = {'DLINK': ['enable ssh\n',
                                                 'config ssh authmode password enable\n',
                                                 'config ssh server maxsession 3 contimeout 600 authfail 10 rekey '
@@ -156,65 +191,110 @@ async def main() -> None:
                                               'write\n',
                                               'Y\n'],
                                       'HUAWEI': ['system-view\n',
+                                                 'aaa\n',
+                                                 'local-user admin service-type ssh telnet terminal\n',
+                                                 'q\n',
                                                  'stelnet server enable\n',
                                                  'ssh authentication-type default password\n',
                                                  'rsa local-key-pair create\n', 'y\n', '512\n',
-                                                 'q\n', 'save\n', 'y\n'],
-                                      'ALCATEL': ['configure\n',
+                                                 'ssh user admin\n',
+                                                 'ssh user admin authentication-type password\n',
+                                                 'ssh user admin service-type all\n',
+                                                 'user-interface vty 0 4\n',
+                                                 'authentication-mode aaa\n',
+                                                 'user privilege level 15\n',
+                                                 'idle-timeout 30 0\n',
+                                                 'protocol inbound all\n'
+                                                 'q\n', 'q\n', 'save\n', 'y\n'],
+                                      'ALCATEL': ['dir',
+                                                  'configure\n',
                                                   'crypto key generate dsa\n',
                                                   'y\n',
-                                                  '\n',
                                                   'ip ssh server\n',
                                                   'end\n',
                                                   'copy running-config startup-config\n',
                                                   'y\n']}
-    try:
-        net = [str(ip) for ip in ipaddress.ip_network(subnet)]
-    except ValueError:
-        print('does not appear to be an IPv4 or IPv6 network')
-        net = ['0.0.0.0']
+    # Получаем маску сети и если она меньше 24-бит, то делим сеть на 24-бита
+    mask = str(ipaddress.ip_network(subnet).netmask).split('.')
+    subnet = ipaddress.ip_network(subnet)
+    maskbit = 0
+    for i in mask:
+        res = int(bin(int(i))[2:].count('1'))
+        maskbit += res
 
-    for ip in net:
-        if ip != '0.0.0.0':
-            tasks.append(asyncio.create_task(TelnetSNMP(ip).check_ping()))
-            tasks.append(asyncio.create_task(TelnetSNMP(ip).snmp_vendor_id()))
+    # Проверяем на доступност хостов и получаеш список доступных хостов
+    pingTaskList = []
+    if maskbit < 24:
+        n = 24 - maskbit
+        subnet = list(subnet.subnets(prefixlen_diff=n))
+        for ipNet in subnet:
+            pingTaskList.append(await pingTask(ipNet))
+    else:
+        pingTaskList = await pingTask(subnet)
 
-    for task in tasks:
-        vendor_id.append(await task)
+    # Проверяем на открытость 22 порта на хостах и получаем список не доступных по 22 порту хостов
+    tasksWaitHostPort = []
+    if maskbit < 24:
+        for net in pingTaskList:
+            time.sleep(5)
+            for ip in net:
+                if isinstance(ip, str):
+                    tasksWaitHostPort.append(asyncio.create_task(
+                        TelnetSNMP(ip).wait_host_port()))
+    else:
+        for ip in pingTaskList:
+            if isinstance(ip, str):
+                tasksWaitHostPort.append(asyncio.create_task(
+                    TelnetSNMP(ip).wait_host_port()))
 
-    for t in vendor_id:
-        if t is not None:
-            if t[0] in switch_id.get('DLINK'):
-                ip = t[1]
+    NoConnSsh = await asyncio.gather(*tasksWaitHostPort)
+    
+    # Получаем вендор id
+    tasksVendorId = []
+    for ip in NoConnSsh:
+        if isinstance(ip, str):
+            tasksVendorId.append(asyncio.create_task(
+                TelnetSNMP(ip).snmp_vendor_id()))
+    vendorId = await asyncio.gather(*tasksVendorId)
+    # print(vendorId)
+    tasksTelnet = []
+    for task in vendorId:
+        if task is not None:
+            print(task)
+
+            if task[0] in switch_id.get('DLINK'):
+                ip = task[1]
                 command = commands.get('DLINK')
-                tasks_telnet.append(asyncio.create_task(
+                tasksTelnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
-            elif t[0] in switch_id.get('EDGE'):
-                ip = t[1]
+            elif task[0] in switch_id.get('EDGE'):
+                ip = task[1]
                 command = commands.get('EDGE')
-                tasks_telnet.append(asyncio.create_task(
+                tasksTelnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
-            elif t[0] in switch_id.get('SNR'):
-                ip = t[1]
+            elif task[0] in switch_id.get('SNR'):
+                ip = task[1]
                 command = commands.get('SNR')
-                tasks_telnet.append(asyncio.create_task(
+                tasksTelnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
 
-            elif t[0] in switch_id.get('HUAWEI'):
-                ip = t[1]
+            elif task[0] in switch_id.get('HUAWEI'):
+                ip = task[1]
                 command = commands.get('HUAWEI')
-                tasks_telnet.append(asyncio.create_task(
+                tasksTelnet.append(asyncio.create_task(
                     TelnetSNMP(ip, username, password, command).cli_connect()))
-            elif t[0] in switch_id.get('ALCATEL'):
-                ip = t[1]
+            elif task[0] in switch_id.get('ALCATEL'):
+                ip = task[1]
+                # cmdDir= commands.get('ALCATEL')[0]
+                # print(cmdDir)
+                
                 command = commands.get('ALCATEL')
-                tasks_telnet.append(asyncio.create_task(
-                    TelnetSNMP(ip, username, password, command).cli_connect()))
-    for task in tasks_telnet:
-        await task
+                tasksTelnet.append(asyncio.create_task(
+                     TelnetSNMP(ip, username, password, command).cli_connect()))
+
+    await asyncio.gather(*tasksTelnet)
 
 if __name__ == '__main__':
     asyncio.run(main())
-    input('...')
